@@ -9,6 +9,7 @@ import (
 // Telegram represents a parsed DSMR P1 telegram.
 type Telegram struct {
 	Identifier string
+	Data       map[string]string
 }
 
 // Split is a split function for a bufio.Scanner to scan for DSMR P1 messages.
@@ -61,13 +62,13 @@ func Parse(data []byte) (t *Telegram, err error) {
 		err = errCRC
 		return
 	}
-	// var n int
+	var n int
 	t = &Telegram{}
-	_, t.Identifier, err = parseIdentifier(data)
+	n, t.Identifier, err = parseIdentifier(data)
 	if err != nil {
 		return
 	}
-	// TODO: parse rest of the message
+	t.Data, err = parseData(data[n : len(data)-7])
 	return
 }
 
@@ -78,6 +79,35 @@ func parseIdentifier(data []byte) (int, string, error) {
 		return 0, "", parseError(`expected "\r\n\r\n"`)
 	}
 	return n + 4, string(data[5:n]), nil
+}
+
+func parseData(data []byte) (map[string]string, error) {
+	var m map[string]string
+	pos := 0
+	for pos < len(data) {
+		n := bytes.Index(data[pos:], []byte{'\r', '\n'})
+		if n == -1 {
+			return m, parseError(`expected "\r\n"`)
+		}
+		k, v, err := parseLine(data[pos : pos+n])
+		if err != nil {
+			return m, err
+		}
+		if m == nil {
+			m = make(map[string]string)
+		}
+		m[k] = v
+		pos += n + 2
+	}
+	return m, nil
+}
+
+func parseLine(data []byte) (k, v string, err error) {
+	i := bytes.IndexByte(data, '(')
+	if i == -1 {
+		return "", "", parseError("expected '('")
+	}
+	return string(data[:i]), string(data[i:]), nil
 }
 
 func checkFormat(data []byte) error {
