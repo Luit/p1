@@ -4,12 +4,11 @@ package p1 // import "luit.eu/p1"
 import (
 	"bytes"
 	"errors"
-	"fmt"
 )
 
 // Telegram represents a parsed DSMR P1 telegram.
 type Telegram struct {
-	Identifier []byte
+	Identifier string
 }
 
 // Split is a split function for a bufio.Scanner to scan for DSMR P1 messages.
@@ -41,8 +40,9 @@ var (
 // Parse validates the P1 message in data by checking its CRC, and parses it
 // into a Telegram value.
 func Parse(data []byte) (t *Telegram, err error) {
-	if err := checkFormat(data); err != nil {
-		return nil, err
+	err = checkFormat(data)
+	if err != nil {
+		return
 	}
 	crcData := data[len(data)-6 : len(data)-2]
 	var crc uint16
@@ -53,14 +53,31 @@ func Parse(data []byte) (t *Telegram, err error) {
 		case 'A' <= b && b <= 'F':
 			crc = crc<<4 + 10 + uint16(b-'A')
 		default:
-			return nil, parseError("expected CRC")
+			err = parseError("expected CRC")
+			return
 		}
 	}
 	if crc != crc16(data[:len(data)-6]) {
-		fmt.Printf("crc mismatch: parsed %04X, calculated %04X\n", crc, crc16(data[:len(data)-6]))
-		return nil, errCRC
+		err = errCRC
+		return
 	}
-	return nil, nil
+	// var n int
+	t = &Telegram{}
+	_, t.Identifier, err = parseIdentifier(data)
+	if err != nil {
+		return
+	}
+	// TODO: parse rest of the message
+	return
+}
+
+// expects "/XXX5" prefix (ignores contents of first 5 bytes)
+func parseIdentifier(data []byte) (int, string, error) {
+	n := bytes.Index(data, []byte{'\r', '\n', '\r', '\n'})
+	if n == -1 {
+		return 0, "", parseError(`expected "\r\n\r\n"`)
+	}
+	return n + 4, string(data[5:n]), nil
 }
 
 func checkFormat(data []byte) error {
@@ -78,10 +95,10 @@ func checkFormat(data []byte) error {
 		return parseError("expected '!'")
 	}
 	if data[len(data)-2] != '\r' {
-		return parseError("expected '\\r'")
+		return parseError(`expected '\r'`)
 	}
 	if data[len(data)-1] != '\n' {
-		return parseError("expected '\\n'")
+		return parseError(`expected '\n'`)
 	}
 	return nil
 }

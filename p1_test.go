@@ -36,7 +36,9 @@ func TestParse(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		_ = telegram
+		if telegram.Identifier != "KAIFA-METER" {
+			t.Errorf(`expected identifier "KAIFA-METER", got %q`, telegram.Identifier)
+		}
 	}
 }
 
