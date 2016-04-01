@@ -13,17 +13,37 @@ type Telegram struct {
 }
 
 // Split is a split function for a bufio.Scanner to scan for DSMR P1 messages.
-// It splits by finding '!' and blindly ingesting another 6 characters after
-// that (which should be the CRC and trailing "\r\n"). Split does not care
-// about the start of the message either.
+// Any data before a '/' is emitted as a token. If the first byte is '/', the
+// '!' + 6 bytes (expecting the CRC and '\r' + '\n')
 func Split(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	i := bytes.IndexByte(data, '!')
-	if i != -1 && i+7 <= len(data) {
-		token = data[:i+7]
-		advance = i + 7
-	} else if atEOF && len(data) > 0 {
-		advance = len(data)
-		token = data
+	i := bytes.IndexByte(data, '/')
+	switch i {
+	case -1:
+		// No '/' found, need more (or emit last chunk in buffer)
+		if atEOF {
+			advance = len(data)
+			token = data
+		}
+	case 0:
+		// First byte is '/', as expected. Look for '!' + 6 more
+		// bytes.
+		i = bytes.IndexByte(data, '!')
+		if i != -1 && i+7 <= len(data) {
+			token = data[:i+7]
+			advance = i + 7
+		} else if atEOF {
+			advance = len(data)
+			token = data
+		}
+	default:
+		// A '/' was found beyond the first byte, emit everything up
+		// to this byte.
+		advance = i
+		token = data[:i]
+	}
+	// We don't need empty tokens at clean EOF
+	if len(token) == 0 {
+		token = nil
 	}
 	return
 }
